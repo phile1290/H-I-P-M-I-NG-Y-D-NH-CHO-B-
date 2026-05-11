@@ -4,12 +4,14 @@ let ai: GoogleGenAI | null = null;
 
 function getAIClient() {
   if (!ai) {
-    // Inject process.env.GEMINI_API_KEY if exists, fallback gracefully to prevent crashes
-    const apiKey = typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY 
-        ? process.env.GEMINI_API_KEY 
-        : '';
+    // LƯU Ý BẢO MẬT (SECURITY WARNING):
+    // Việc đưa trực tiếp (hardcode) API Key vào mã nguồn frontend không được khuyến khích cho ứng dụng thực tế.
+    // Vì bất kỳ ai truy cập trang web đều có thể xem được mã này qua DevTools.
+    // Tuy nhiên, để đáp ứng yêu cầu của bạn giúp nhanh chóng deploy lên Vercel mà không cần cấu hình thêm,
+    // API key đã được gắn trực tiếp xuống phần dưới đây.
+    const apiKey = 'AIzaSyDyEODb_w4IdcmtoltO-wd7xZQnGFzxfS0';
         
-    ai = new GoogleGenAI({ apiKey: apiKey || 'missing-key' });
+    ai = new GoogleGenAI({ apiKey });
   }
   return ai;
 }
