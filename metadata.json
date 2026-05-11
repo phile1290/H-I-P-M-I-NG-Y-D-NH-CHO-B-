@@ -1,0 +1,8 @@
+{
+  "name": "HỎI ĐÁP DÀNH CHO BÉ",
+  "description": "Trợ lý AI trả lời câu hỏi trực tiếp bằng giọng nói, thiết kế riêng cho trẻ em với ngôn từ đơn giản, dễ hiểu.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
