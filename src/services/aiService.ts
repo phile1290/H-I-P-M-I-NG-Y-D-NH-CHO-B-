@@ -1,6 +1,18 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let ai: GoogleGenAI | null = null;
+
+function getAIClient() {
+  if (!ai) {
+    // Inject process.env.GEMINI_API_KEY if exists, fallback gracefully to prevent crashes
+    const apiKey = typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY 
+        ? process.env.GEMINI_API_KEY 
+        : '';
+        
+    ai = new GoogleGenAI({ apiKey: apiKey || 'missing-key' });
+  }
+  return ai;
+}
 
 const SYSTEM_INSTRUCTION = `Vai trò:
 Bạn là một chuyên gia, một người hướng dẫn thông minh, thân thiện và đáng tin cậy, được thiết kế đặc biệt để giải đáp mọi thắc mắc đa lĩnh vực cho trẻ em.
@@ -17,7 +29,8 @@ Nguyên tắc trả lời bắt buộc:
 
 export async function askGemini(audioBase64: string, mimeType: string): Promise<string> {
   try {
-    const response = await ai.models.generateContent({
+    const client = getAIClient();
+    const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [
         {
@@ -62,6 +75,10 @@ export async function askGemini(audioBase64: string, mimeType: string): Promise<
     return response.text || "Tôi không nghe rõ, bạn có thể nói lại được không?";
   } catch (error: any) {
     console.error("Lỗi khi gọi Gemini API:", error);
+    
+    if (error?.message?.includes('missing-key') || error?.message?.includes('API key not valid')) {
+      throw new Error('Chưa cấu hình API Key. Vui lòng thêm GEMINI_API_KEY trong cấu hình Vercel (Project Settings > Environment Variables).');
+    }
     
     // Xử lý lỗi 429 Quota Exceeded
     if (error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('quota')) {
