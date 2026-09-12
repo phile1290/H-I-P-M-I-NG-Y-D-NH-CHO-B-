@@ -1,16 +1,38 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, Square, Loader2, Volume2, VolumeX, Sparkles } from 'lucide-react';
+import { Mic, Square, Loader2, Volume2, VolumeX, Sparkles, Image as ImageIcon, X } from 'lucide-react';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
 import { useTTS } from './hooks/useTTS';
 import { askGemini } from './services/aiService';
 
 export default function App() {
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
-  const { speak, stopSpeaking, isSpeaking } = useTTS();
+  const { speak, stopSpeaking, isSpeaking, initSpeech } = useTTS();
   const [answer, setAnswer] = useState<string>('');
   const [isThinking, setIsThinking] = useState(false);
   const [error, setError] = useState<string>('');
+
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<{ base64: string; mimeType: string } | null>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        setImagePreview(result);
+        const base64data = result.split(',')[1];
+        setImageBase64({ base64: base64data, mimeType: file.type });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setImagePreview(null);
+    setImageBase64(null);
+  };
 
   const handleToggleRecording = async () => {
     if (isRecording) {
@@ -21,7 +43,7 @@ export default function App() {
         setAnswer('');
         stopSpeaking();
         try {
-          const aiTextResponse = await askGemini(audioData.base64, audioData.mimeType);
+          const aiTextResponse = await askGemini(audioData.base64, audioData.mimeType, imageBase64);
           setAnswer(aiTextResponse);
           setIsThinking(false);
           await speak(aiTextResponse);
@@ -32,6 +54,7 @@ export default function App() {
         }
       }
     } else {
+      initSpeech(); // Khởi tạo TTS ngay lúc user click để lấy quyền phát âm thanh
       stopSpeaking();
       setAnswer('');
       setError('');
@@ -63,8 +86,41 @@ export default function App() {
           <p className="text-xl text-gray-600 font-medium">Bé muốn hỏi gì nào?</p>
         </motion.div>
 
+        {/* Upload Image Section */}
+        <div className="relative z-10 mb-6 flex flex-col items-center">
+          {imagePreview ? (
+            <div className="relative group">
+              <img 
+                src={imagePreview} 
+                alt="Hình ảnh tải lên" 
+                className="w-48 h-48 object-cover rounded-3xl border-4 border-indigo-200 shadow-md" 
+              />
+              <button 
+                onClick={removeImage} 
+                disabled={isRecording || isThinking}
+                className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1.5 shadow-md hover:bg-red-600 transition-colors disabled:opacity-50"
+                title="Xóa ảnh"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <label className={`cursor-pointer flex items-center justify-center gap-2 px-6 py-3 bg-indigo-50 text-indigo-700 rounded-full hover:bg-indigo-100 transition-colors font-bold shadow-sm border-2 border-indigo-200 ${isRecording || isThinking ? 'opacity-50 pointer-events-none' : ''}`}>
+              <ImageIcon className="w-6 h-6 text-indigo-500" />
+              <span>Tải ảnh lên (nếu muốn)</span>
+              <input 
+                type="file" 
+                accept="image/*" 
+                onChange={handleImageUpload} 
+                className="hidden" 
+                disabled={isRecording || isThinking || isSpeaking} 
+              />
+            </label>
+          )}
+        </div>
+
         {/* Microphone Button */}
-        <div className="relative z-10 my-8 flex flex-col items-center">
+        <div className="relative z-10 my-4 flex flex-col items-center">
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}

@@ -29,25 +29,43 @@ Nguyên tắc trả lời bắt buộc:
 4. Tối ưu hóa cho Text-to-Speech (TTS): Vì văn bản sẽ được máy đọc thành tiếng, hãy viết câu cú mạch lạc, trơn tru. Tuyệt đối KHÔNG sử dụng các định dạng phức tạp (như bảng biểu, mã code, gạch đầu dòng lồng nhau, hoặc các ký tự đặc biệt) khiến hệ thống phát âm thanh bị lỗi hoặc ngắt ngứ. KHÔNG dùng markdown.
 5. Thái độ: Luôn tích cực, khích lệ sự tò tự học của trẻ.`;
 
-export async function askGemini(audioBase64: string, mimeType: string): Promise<string> {
+export async function askGemini(
+  audioBase64: string, 
+  mimeType: string,
+  imageData?: { base64: string; mimeType: string } | null
+): Promise<string> {
   try {
     const client = getAIClient();
+    
+    const parts: any[] = [
+      {
+        inlineData: {
+          mimeType,
+          data: audioBase64,
+        },
+      },
+      {
+        text: "Lắng nghe câu hỏi qua đoạn ghi âm trên và trả lời."
+      }
+    ];
+
+    if (imageData) {
+      parts.push({
+        inlineData: {
+          mimeType: imageData.mimeType,
+          data: imageData.base64,
+        }
+      });
+      // Cập nhật câu lệnh để AI chú ý đến hình ảnh
+      parts[1].text = "Lắng nghe câu hỏi qua đoạn ghi âm trên, xem xét kỹ hình ảnh đính kèm (nếu có) và trả lời thật chính xác.";
+    }
+
     const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [
         {
           role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: audioBase64,
-              },
-            },
-            {
-              text: "Lắng nghe câu hỏi qua đoạn ghi âm trên và trả lời."
-            }
-          ],
+          parts: parts,
         },
       ],
       config: {
