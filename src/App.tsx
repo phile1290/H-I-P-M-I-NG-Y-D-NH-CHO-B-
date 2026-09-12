@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, Square, Loader2, Volume2, VolumeX, Sparkles, Image as ImageIcon, X } from 'lucide-react';
+import { Mic, Square, Loader2, Volume2, VolumeX, Sparkles, Image as ImageIcon, X, Settings, Key, Save } from 'lucide-react';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
 import { useTTS } from './hooks/useTTS';
 import { askGemini } from './services/aiService';
@@ -8,12 +8,39 @@ import { askGemini } from './services/aiService';
 export default function App() {
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
   const { speak, stopSpeaking, isSpeaking, initSpeech } = useTTS();
+  
+  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
+  const [showSettings, setShowSettings] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState('');
+
   const [answer, setAnswer] = useState<string>('');
   const [isThinking, setIsThinking] = useState(false);
   const [error, setError] = useState<string>('');
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<{ base64: string; mimeType: string } | null>(null);
+
+  useEffect(() => {
+    if (!apiKey) {
+      setShowSettings(true);
+    }
+  }, [apiKey]);
+
+  const handleSaveApiKey = () => {
+    if (tempApiKey.trim()) {
+      setApiKey(tempApiKey.trim());
+      localStorage.setItem('gemini_api_key', tempApiKey.trim());
+      setShowSettings(false);
+      setError('');
+    }
+  };
+
+  const openSettings = () => {
+    setTempApiKey(apiKey);
+    setShowSettings(true);
+    stopSpeaking();
+    if (isRecording) stopRecording();
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -35,6 +62,12 @@ export default function App() {
   };
 
   const handleToggleRecording = async () => {
+    if (!apiKey) {
+      setError('Vui lòng nhập API Key trong Cài đặt trước khi sử dụng.');
+      setShowSettings(true);
+      return;
+    }
+
     if (isRecording) {
       const audioData = await stopRecording();
       if (audioData) {
@@ -43,7 +76,7 @@ export default function App() {
         setAnswer('');
         stopSpeaking();
         try {
-          const aiTextResponse = await askGemini(audioData.base64, audioData.mimeType, imageBase64);
+          const aiTextResponse = await askGemini(audioData.base64, audioData.mimeType, imageBase64, apiKey);
           setAnswer(aiTextResponse);
           setIsThinking(false);
           await speak(aiTextResponse);
@@ -51,6 +84,10 @@ export default function App() {
           console.error(err);
           setError(err.message || 'Không thể kết nối với não bộ lúc này. Bé thử lại sau nhé!');
           setIsThinking(false);
+          
+          if (err.message?.includes('API Key')) {
+             setShowSettings(true);
+          }
         }
       }
     } else {
@@ -67,8 +104,17 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-sky-100 flex flex-col items-center p-4 sm:p-8 font-sans">
-      <div className="w-full max-w-2xl bg-white rounded-[3rem] shadow-xl p-8 flex flex-col items-center relative overflow-hidden">
+    <div className="min-h-screen bg-sky-100 flex flex-col items-center p-4 sm:p-8 font-sans relative">
+      {/* Settings Button */}
+      <button 
+        onClick={openSettings}
+        className="absolute top-4 right-4 sm:top-8 sm:right-8 bg-white p-3 rounded-full shadow-md text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 transition-colors z-20"
+        title="Cài đặt API Key"
+      >
+        <Settings className="w-6 h-6" />
+      </button>
+
+      <div className="w-full max-w-2xl bg-white rounded-[3rem] shadow-xl p-8 flex flex-col items-center relative overflow-hidden mt-8 sm:mt-0">
         {/* Background Decorative Elements */}
         <div className="absolute top-[-2rem] left-[-2rem] w-32 h-32 bg-yellow-200 rounded-full opacity-50 pointer-events-none" />
         <div className="absolute bottom-[-3rem] right-[-3rem] w-48 h-48 bg-pink-200 rounded-full opacity-50 pointer-events-none" />
@@ -142,7 +188,7 @@ export default function App() {
               <Mic className="w-12 h-12 sm:w-16 sm:h-16 text-white" />
             )}
           </motion.button>
-          <div className="mt-6 text-xl font-bold text-gray-700 min-h-[2rem]">
+          <div className="mt-6 text-xl font-bold text-gray-700 min-h-[2rem] text-center px-4">
             {isRecording && <span className="text-red-500">Đang nghe bé nói...</span>}
             {isThinking && <span className="text-indigo-500">Đang suy nghĩ...</span>}
             {!isRecording && !isThinking && !isSpeaking && <span>Bấm để nói</span>}
@@ -192,13 +238,70 @@ export default function App() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="w-full bg-red-50 text-red-600 p-4 rounded-2xl font-bold text-center mt-4 border-2 border-red-200 z-10"
+              className="w-full bg-red-50 text-red-600 p-4 rounded-2xl font-bold text-center mt-4 border-2 border-red-200 z-10 break-words"
             >
               {error}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-sky-900/40 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl relative"
+            >
+              <button 
+                onClick={() => { if(apiKey) setShowSettings(false) }}
+                disabled={!apiKey}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 disabled:opacity-0"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              
+              <div className="flex items-center gap-3 text-indigo-600 mb-6">
+                <div className="p-3 bg-indigo-100 rounded-2xl">
+                  <Key className="w-6 h-6" />
+                </div>
+                <h2 className="text-2xl font-bold">Cài đặt API Key</h2>
+              </div>
+              
+              <p className="text-gray-600 mb-4 font-medium text-sm">
+                Để ứng dụng hoạt động, bạn cần nhập Google Gemini API Key. Key này sẽ được lưu an toàn trên trình duyệt của bạn (không gửi lên máy chủ).
+              </p>
+              
+              <div className="mb-6">
+                <input
+                  type="password"
+                  value={tempApiKey}
+                  onChange={(e) => setTempApiKey(e.target.value)}
+                  placeholder="Nhập AIzaSy..."
+                  className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors font-mono"
+                />
+              </div>
+              
+              <button
+                onClick={handleSaveApiKey}
+                disabled={!tempApiKey.trim()}
+                className="w-full py-3 bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-colors"
+              >
+                <Save className="w-5 h-5" />
+                Lưu cài đặt
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

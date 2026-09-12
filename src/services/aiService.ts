@@ -1,19 +1,15 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
 
-let ai: GoogleGenAI | null = null;
+// Cache the client locally if the key hasn't changed
+let aiClient: GoogleGenAI | null = null;
+let currentApiKey = '';
 
-function getAIClient() {
-  if (!ai) {
-    // LƯU Ý BẢO MẬT (SECURITY WARNING):
-    // Việc đưa trực tiếp (hardcode) API Key vào mã nguồn frontend không được khuyến khích cho ứng dụng thực tế.
-    // Vì bất kỳ ai truy cập trang web đều có thể xem được mã này qua DevTools.
-    // Tuy nhiên, để đáp ứng yêu cầu của bạn giúp nhanh chóng deploy lên Vercel mà không cần cấu hình thêm,
-    // API key đã được gắn trực tiếp xuống phần dưới đây.
-    const apiKey = 'AIzaSyDyEODb_w4IdcmtoltO-wd7xZQnGFzxfS0';
-        
-    ai = new GoogleGenAI({ apiKey });
+function getAIClient(apiKey: string) {
+  if (!aiClient || currentApiKey !== apiKey) {
+    aiClient = new GoogleGenAI({ apiKey });
+    currentApiKey = apiKey;
   }
-  return ai;
+  return aiClient;
 }
 
 const SYSTEM_INSTRUCTION = `Vai trò:
@@ -31,10 +27,15 @@ Nguyên tắc trả lời bắt buộc:
 export async function askGemini(
   audioBase64: string, 
   mimeType: string,
-  imageData?: { base64: string; mimeType: string } | null
+  imageData: { base64: string; mimeType: string } | null | undefined,
+  apiKey: string
 ): Promise<string> {
+  if (!apiKey) {
+    throw new Error('Vui lòng cài đặt API Key trước khi sử dụng.');
+  }
+
   try {
-    const client = getAIClient();
+    const client = getAIClient(apiKey);
     
     // Loại bỏ phần codecs (ví dụ: 'audio/webm;codecs=opus' -> 'audio/webm') để tránh lỗi từ API
     const safeAudioMimeType = mimeType.split(';')[0];
@@ -104,17 +105,23 @@ export async function askGemini(
   } catch (error: any) {
     console.error("Lỗi khi gọi Gemini API:", error);
     
-    if (error?.message?.includes('missing-key') || error?.message?.includes('API key not valid')) {
-      throw new Error('Chưa cấu hình API Key. Vui lòng kiểm tra lại cấu hình.');
+    const errorMessage = error?.message || '';
+
+    if (errorMessage.includes('leaked') || errorMessage.includes('API key not valid') || errorMessage.includes('403')) {
+      throw new Error('API Key của bạn không hợp lệ hoặc đã bị khóa (leaked). Vui lòng đổi API Key khác trong phần Cài đặt.');
+    }
+    
+    if (errorMessage.includes('missing-key')) {
+      throw new Error('Chưa cấu hình API Key. Vui lòng thêm trong phần Cài đặt.');
     }
     
     // Xử lý lỗi 429 Quota Exceeded
-    if (error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('quota')) {
+    if (error?.status === 429 || errorMessage.includes('429') || errorMessage.includes('quota')) {
       throw new Error('API Key của bạn đã hết hạn mức sử dụng (Quota Exceeded).');
     }
     
     // Ném lỗi chi tiết ra màn hình để dễ debug
-    throw new Error(`Lỗi hệ thống: ${error?.message || 'Vui lòng thử lại sau.'}`);
+    throw new Error(`Lỗi hệ thống: ${errorMessage || 'Vui lòng thử lại sau.'}`);
   }
 }
 
