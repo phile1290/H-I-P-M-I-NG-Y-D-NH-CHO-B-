@@ -17,17 +17,16 @@ function getAIClient() {
 }
 
 const SYSTEM_INSTRUCTION = `Vai trò:
-Bạn là một chuyên gia, một người hướng dẫn thông minh, thân thiện và đáng tin cậy, được thiết kế đặc biệt để giải đáp mọi thắc mắc đa lĩnh vực cho trẻ em.
+Bạn là một chuyên gia, một giáo viên thông minh, thân thiện và đáng tin cậy, chuyên giải đáp thắc mắc đa lĩnh vực cho trẻ em.
 
 Nhiệm vụ cốt lõi:
-Nghe/đọc câu hỏi của trẻ và đưa ra câu trả lời chính xác, dễ hiểu. Câu trả lời này sau đó sẽ được hệ thống chuyển đổi thành giọng nói để đọc cho trẻ nghe.
+Lắng nghe câu hỏi và phân tích thật kỹ hình ảnh đính kèm (nếu có). Trả lời chính xác, giải thích chi tiết, cặn kẽ và dễ hiểu.
 
 Nguyên tắc trả lời bắt buộc:
-1. Chính xác nhưng đơn giản: Thông tin cung cấp phải chuẩn xác tuyệt đối (100%), nhưng được diễn đạt bằng ngôn ngữ phổ thông, gần gũi, phù hợp với tư duy của trẻ nhỏ. Tuyệt đối không dùng từ ngữ hàn lâm, phức tạp.
-2. Ngắn gọn và súc tích: Đi thẳng vào trọng tâm câu hỏi. Không giải thích dài dòng hay lan man.
-3. Ví dụ thực tế sinh động: Luôn luôn cung cấp ít nhất một ví dụ minh họa liên quan đến cuộc sống thực tế hàng ngày (như trường học, đồ chơi, gia đình, thiên nhiên) để trẻ dễ hình dung và hiểu được ngay bản chất của vấn đề.
-4. Tối ưu hóa cho Text-to-Speech (TTS): Vì văn bản sẽ được máy đọc thành tiếng, hãy viết câu cú mạch lạc, trơn tru. Tuyệt đối KHÔNG sử dụng các định dạng phức tạp (như bảng biểu, mã code, gạch đầu dòng lồng nhau, hoặc các ký tự đặc biệt) khiến hệ thống phát âm thanh bị lỗi hoặc ngắt ngứ. KHÔNG dùng markdown.
-5. Thái độ: Luôn tích cực, khích lệ sự tò tự học của trẻ.`;
+1. Giải thích chi tiết, rõ ràng: Nếu hình ảnh là một bài tập, câu hỏi trắc nghiệm hoặc có các đáp án lựa chọn, bạn PHẢI đọc rõ nội dung câu hỏi là gì, giải thích cặn kẽ vì sao chọn đáp án đúng và vì sao các đáp án khác sai từng bước một. Không được trả lời qua loa.
+2. Định dạng văn bản thuần (Plain Text): TUYỆT ĐỐI KHÔNG sử dụng bất kỳ ký tự đặc biệt nào để định dạng (như dấu sao *, dấu thăng #, gạch ngang -, gạch dưới _, in đậm, in nghiêng). Văn bản phải là chữ thường liền mạch để hệ thống đọc giọng nói (TTS) không bị vấp.
+3. Ngôn ngữ đơn giản: Dùng từ ngữ gần gũi, thân thiện như đang nói chuyện trực tiếp với một em bé.
+4. Ví dụ minh họa: Liên hệ thực tế nếu cần thiết để trẻ dễ hiểu hơn.`;
 
 export async function askGemini(
   audioBase64: string, 
@@ -37,10 +36,13 @@ export async function askGemini(
   try {
     const client = getAIClient();
     
+    // Loại bỏ phần codecs (ví dụ: 'audio/webm;codecs=opus' -> 'audio/webm') để tránh lỗi từ API
+    const safeAudioMimeType = mimeType.split(';')[0];
+    
     const parts: any[] = [
       {
         inlineData: {
-          mimeType,
+          mimeType: safeAudioMimeType,
           data: audioBase64,
         },
       },
@@ -50,14 +52,15 @@ export async function askGemini(
     ];
 
     if (imageData) {
+      const safeImageMimeType = imageData.mimeType.split(';')[0];
       parts.push({
         inlineData: {
-          mimeType: imageData.mimeType,
+          mimeType: safeImageMimeType,
           data: imageData.base64,
         }
       });
-      // Cập nhật câu lệnh để AI chú ý đến hình ảnh
-      parts[1].text = "Lắng nghe câu hỏi qua đoạn ghi âm trên, xem xét kỹ hình ảnh đính kèm (nếu có) và trả lời thật chính xác.";
+      // Cập nhật câu lệnh để AI chú ý phân tích sâu hình ảnh
+      parts[1].text = "Lắng nghe câu hỏi qua đoạn ghi âm trên, xem xét kỹ hình ảnh đính kèm và giải thích thật cặn kẽ, chi tiết từng đáp án (nếu là bài tập/câu hỏi lựa chọn).";
     }
 
     const response = await client.models.generateContent({
@@ -92,20 +95,26 @@ export async function askGemini(
       },
     });
 
-    return response.text || "Tôi không nghe rõ, bạn có thể nói lại được không?";
+    let textResponse = response.text || "Tôi không nghe rõ, bạn có thể nói lại được không?";
+    
+    // Chủ động xóa bỏ tất cả các ký tự đặc biệt/markdown (*, #, _, `, ~) để đảm bảo TTS đọc mượt mà
+    textResponse = textResponse.replace(/[*#_`~]/g, '');
+
+    return textResponse;
   } catch (error: any) {
     console.error("Lỗi khi gọi Gemini API:", error);
     
     if (error?.message?.includes('missing-key') || error?.message?.includes('API key not valid')) {
-      throw new Error('Chưa cấu hình API Key. Vui lòng thêm GEMINI_API_KEY trong cấu hình Vercel (Project Settings > Environment Variables).');
+      throw new Error('Chưa cấu hình API Key. Vui lòng kiểm tra lại cấu hình.');
     }
     
     // Xử lý lỗi 429 Quota Exceeded
     if (error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('quota')) {
-      throw new Error('API Key của bạn đã hết hạn mức sử dụng (Quota Exceeded). Vui lòng kiểm tra lại Google AI Studio hoặc thiết lập thanh toán.');
+      throw new Error('API Key của bạn đã hết hạn mức sử dụng (Quota Exceeded).');
     }
     
-    throw new Error('Đã xảy ra lỗi khi suy nghĩ câu trả lời.');
+    // Ném lỗi chi tiết ra màn hình để dễ debug
+    throw new Error(`Lỗi hệ thống: ${error?.message || 'Vui lòng thử lại sau.'}`);
   }
 }
 
